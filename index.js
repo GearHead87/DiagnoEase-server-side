@@ -57,8 +57,12 @@ async function run() {
         // await client.connect();
 
         const db = client.db("DiagnoEaseDB");
-        const jobsCollection = db.collection('jobs')
-        const appliedJobsCollection = db.collection('appliedJobs')
+        const usersCollection = db.collection('users')
+        const testsCollection = db.collection('tests')
+        const appointmentsCollection = db.collection('appointments')
+        const testResultsCollection = db.collection('testResults')
+        const bannersCollection = db.collection('banners')
+        const recommendationsCollection = db.collection('recommendations')
 
         //creating JWT Token
         app.post("/jwt", async (req, res) => {
@@ -79,7 +83,11 @@ async function run() {
         });
 
         // API Services
-
+        app.post('/user', async(req, res)=>{
+          const userdata = req.body;
+          const result = await usersCollection.insertOne(userdata);
+          res.send(result);
+        })
 
 
         // Send a ping to confirm a successful connection
