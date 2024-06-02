@@ -88,10 +88,26 @@ async function run() {
 			res.send(result);
 		});
 
+		app.get("/users", async (req, res) => {
+			const result = await usersCollection.find().toArray();
+			res.send(result);
+		});
 		app.get("/user/:email", async (req, res) => {
 			const userEmail = req.params.email;
 			const query = { email: userEmail };
 			const result = await usersCollection.findOne(query);
+			res.send(result);
+		});
+		app.patch("/user/:id", async (req, res) => {
+			const userData = req.body;
+			const id = req.params.id;
+			const updateDoc = {
+				$set: {
+					...userData,
+				},
+			};
+			const query = { _id: new ObjectId(id) };
+			const result = await usersCollection.updateOne(query, updateDoc);
 			res.send(result);
 		});
 
