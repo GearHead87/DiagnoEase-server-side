@@ -115,10 +115,42 @@ async function run() {
 
 		// Test Collection
 		app.post("/test", async (req, res) => {
-      const testData = req.body;
-      const result = await testsCollection.insertOne(testData);
-      res.send(result)
-    });
+			const testData = req.body;
+			const result = await testsCollection.insertOne(testData);
+			res.send(result);
+		});
+
+		app.get("/tests", async (req, res) => {
+			const result = await testsCollection.find().toArray();
+			res.send(result);
+		});
+
+		app.get("/test/:id", async (req, res) => {
+			const id = req.params.id;
+			const query = { _id: new ObjectId(id) };
+			const result = await testsCollection.findOne(query);
+			res.send(result);
+		});
+
+		app.patch("/test/:id", async (req, res) => {
+			const id = req.params.id;
+			const testData = req.body;
+			const updateDoc = {
+				$set: {
+					...testData,
+				},
+			};
+			const query = { _id: new ObjectId(id) };
+			const result = await testsCollection.updateOne(query, updateDoc);
+			res.send(result);
+		});
+
+		app.delete("/test/:id", async (req, res) => {
+			const id = req.params.id;
+			const query = { _id: new ObjectId(id) };
+			const result = await testsCollection.deleteOne(query);
+			res.send(result);
+		});
 
 		// Send a ping to confirm a successful connection
 		await client.db("admin").command({ ping: 1 });
