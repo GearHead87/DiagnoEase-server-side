@@ -82,6 +82,8 @@ async function run() {
 		});
 
 		// API Services
+
+		// User Collection
 		app.post("/user", async (req, res) => {
 			const userdata = req.body;
 			const result = await usersCollection.insertOne(userdata);
@@ -110,6 +112,13 @@ async function run() {
 			const result = await usersCollection.updateOne(query, updateDoc);
 			res.send(result);
 		});
+
+		// Test Collection
+		app.post("/test", async (req, res) => {
+      const testData = req.body;
+      const result = await testsCollection.insertOne(testData);
+      res.send(result)
+    });
 
 		// Send a ping to confirm a successful connection
 		await client.db("admin").command({ ping: 1 });
