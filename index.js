@@ -4,6 +4,7 @@ const jwt = require("jsonwebtoken");
 const cookieParser = require("cookie-parser");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 require("dotenv").config();
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const port = process.env.PORT || 5000;
 const app = express();
 
@@ -56,10 +57,11 @@ async function run() {
 		// await client.connect();
 
 		const db = client.db("DiagnoEaseDB");
+		const districtsCollection = db.collection("districts");
+		const upazilasCollection = db.collection("upazilas");
 		const usersCollection = db.collection("users");
 		const testsCollection = db.collection("tests");
 		const appointmentsCollection = db.collection("appointments");
-		const testResultsCollection = db.collection("testResults");
 		const bannersCollection = db.collection("banners");
 		const recommendationsCollection = db.collection("recommendations");
 
@@ -83,6 +85,33 @@ async function run() {
 
 		// API Services
 
+		app.get("/districts", async (req, res) => {
+			const result = await districtsCollection.find().toArray();
+			res.send(result);
+		});
+		app.get("/upazilas", async (req, res) => {
+			const result = await upazilasCollection.find().toArray();
+			res.send(result);
+		});
+
+		// create-payment-intent
+		app.post("/create-payment-intent", async (req, res) => {
+			const price = req.body.price;
+			const priceInCent = parseFloat(price) * 100;
+			if (!price || priceInCent < 1) return;
+			// generate clientSecret
+			const { client_secret } = await stripe.paymentIntents.create({
+				amount: priceInCent,
+				currency: "usd",
+				// In the latest version of the API, specifying the `automatic_payment_methods` parameter is optional because Stripe enables its functionality by default.
+				automatic_payment_methods: {
+					enabled: true,
+				},
+			});
+			// send client secret as response
+			res.send({ clientSecret: client_secret });
+		});
+
 		// User Collection
 		app.post("/user", async (req, res) => {
 			const userdata = req.body;
@@ -94,12 +123,14 @@ async function run() {
 			const result = await usersCollection.find().toArray();
 			res.send(result);
 		});
+
 		app.get("/user/:email", async (req, res) => {
 			const userEmail = req.params.email;
 			const query = { email: userEmail };
 			const result = await usersCollection.findOne(query);
 			res.send(result);
 		});
+
 		app.patch("/user/:id", async (req, res) => {
 			const userData = req.body;
 			const id = req.params.id;
@@ -149,6 +180,70 @@ async function run() {
 			const id = req.params.id;
 			const query = { _id: new ObjectId(id) };
 			const result = await testsCollection.deleteOne(query);
+			res.send(result);
+		});
+
+		// Appointments Collection
+		app.post("/booking", async (req, res) => {
+			// Upload new Booking Data
+			const newData = req.body;
+			const result = await appointmentsCollection.insertOne(newData);
+			// update test Collectio n
+			const updateDoc = {
+				$inc: { slots: -1 },
+			};
+			const query = { _id: new ObjectId(newData.testData._id) };
+			const updateTestSlotsNumber = await testsCollection.updateOne(
+				query,
+				updateDoc
+			);
+			if (updateTestSlotsNumber.modifiedCount && result.acknowledged === true) {
+				res
+					.status(200)
+					.send({ success: true, message: "Appointment Booked Successfully" });
+			}
+		});
+
+		app.delete("/booking/:id", async (req, res) => {
+			const id = req.params.id;
+			const query = { _id: new ObjectId(id) };
+			const result = await appointmentsCollection.deleteOne(query);
+			console.log(id, result);
+			res.send(result);
+		});
+
+		app.get("/appointments/:testId", async (req, res) => {
+			const testId = req.params.testId;
+			const query = { "testData._id": testId };
+			const result = await appointmentsCollection.find(query).toArray();
+			res.send(result);
+		});
+
+		app.get("/upcomming-appointments/:email", async (req, res) => {
+			const email = req.params.email;
+			const query = { "user.email": email, status: "pending" };
+			const result = await appointmentsCollection.find(query).toArray();
+			res.send(result);
+		});
+
+		app.get("/test-results/:email", async (req, res) => {
+			const email = req.params.email;
+			const query = { "user.email": email, status: "delivered" };
+			const result = await appointmentsCollection.find(query).toArray();
+			res.send(result);
+		});
+
+		app.patch("/report-submit/:id", async (req, res) => {
+			const id = req.params.id;
+			const report = req.body;
+			const updateDoc = {
+				$set: {
+					...report,
+					status: "delivered",
+				},
+			};
+			const query = { _id: new ObjectId(id) };
+			const result = await appointmentsCollection.updateOne(query, updateDoc);
 			res.send(result);
 		});
 
