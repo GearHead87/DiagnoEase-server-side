@@ -247,6 +247,25 @@ async function run() {
 			res.send(result);
 		});
 
+		// Banner collection
+		app.post("/banner", async (req, res) => {
+			const bannerData = req.body;
+			const result = await bannersCollection.insertOne(bannerData);
+			res.send(result);
+		});
+
+		app.get("/banner", async (req, res) => {
+			const result = await bannersCollection.find().toArray();
+			res.send(result);
+		});
+
+		app.delete("/banner/:id", async (req, res) => {
+			const id = req.params.id;
+			const query = { _id: new ObjectId(id) };
+			const result = await bannersCollection.deleteOne(query);
+			res.send(result);
+		});
+
 		// Send a ping to confirm a successful connection
 		await client.db("admin").command({ ping: 1 });
 		console.log(
