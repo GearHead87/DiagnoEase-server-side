@@ -266,6 +266,29 @@ async function run() {
 			res.send(result);
 		});
 
+		app.put("/banner/:id/activate", async (req, res) => {
+			const id = req.params.id;
+			// update all banner as inactive
+			const updateAllBanner = await bannersCollection.updateMany(
+				{},
+				{
+					$set: {
+						isActive: false,
+					},
+				}
+			);
+			// console.log(updateAllBanner);
+			// update seleted banner as active
+			const query = { _id: new ObjectId(id) };
+			const updateDoc = {
+				$set: {
+					isActive: true,
+				},
+			};
+			const result = await bannersCollection.updateOne(query, updateDoc);
+			res.send(result);
+		});
+
 		// Send a ping to confirm a successful connection
 		await client.db("admin").command({ ping: 1 });
 		console.log(
