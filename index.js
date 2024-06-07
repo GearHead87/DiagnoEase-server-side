@@ -233,8 +233,9 @@ async function run() {
 			res.send(result);
 		});
 
-		app.patch("/report-submit/:id", async (req, res) => {
+		app.patch("/report-submit/:email/:id", async (req, res) => {
 			const id = req.params.id;
+			const email = req.params.email;
 			const report = req.body;
 			const updateDoc = {
 				$set: {
@@ -242,7 +243,7 @@ async function run() {
 					status: "delivered",
 				},
 			};
-			const query = { _id: new ObjectId(id) };
+			const query = { _id: new ObjectId(id), "user.email": email };
 			const result = await appointmentsCollection.updateOne(query, updateDoc);
 			res.send(result);
 		});
@@ -287,6 +288,68 @@ async function run() {
 			};
 			const result = await bannersCollection.updateOne(query, updateDoc);
 			res.send(result);
+		});
+
+		// Admin stat Data
+		app.get("/admin-stat", async (req, res) => {
+			const bookedTestPipeline = [
+				{
+					$group: {
+						_id: "$testData._id",
+						name: { $first: "$testData.name" },
+						count: { $sum: 1 },
+					},
+				},
+				{
+					$sort: { count: -1 },
+				},
+				{
+					$limit: 10,
+				},
+				{
+					$project: {
+						_id: 0,
+						name: 1,
+						count: 1,
+					},
+				},
+			];
+			const bookedTestData = await appointmentsCollection
+				.aggregate(bookedTestPipeline)
+				.toArray();
+			const mostlyBookedChartData = bookedTestData.map((data) => {
+				const result = [data.name, data.count];
+				return result;
+			});
+			mostlyBookedChartData.unshift(["Test Name", "Total Booked"])
+			// Delivery Status Chart Data
+			const deliveryStatusPipeline = [
+				{
+					$group: {
+						_id: "$status",
+						count: { $sum: 1 },
+					},
+				},
+				{
+					$project: {
+						_id: 0,
+						status: "$_id",
+						count: 1,
+					},
+				},
+			];
+			const deliveryStatusData = await appointmentsCollection
+				.aggregate(deliveryStatusPipeline)
+				.toArray();
+			const deliveryData = deliveryStatusData.map((data) => {
+				const result = [data.status, data.count];
+				return result;
+			});
+			deliveryData.unshift(["Delivery Status", "count"]);
+			res.send({
+				mostlyBookedChartData: mostlyBookedChartData,
+				deliverySatusChartData: deliveryData,
+			});
 		});
 
 		// Send a ping to confirm a successful connection
