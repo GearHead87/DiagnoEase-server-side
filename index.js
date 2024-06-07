@@ -236,10 +236,10 @@ async function run() {
 		app.patch("/report-submit/:email/:id", async (req, res) => {
 			const id = req.params.id;
 			const email = req.params.email;
-			const report = req.body;
+			const reportData= req.body;
 			const updateDoc = {
 				$set: {
-					...report,
+					result: reportData.result,
 					status: "delivered",
 				},
 			};
