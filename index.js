@@ -188,7 +188,7 @@ async function run() {
 			// Upload new Booking Data
 			const newData = req.body;
 			const result = await appointmentsCollection.insertOne(newData);
-			// update test Collectio n
+			// update test Collection
 			const updateDoc = {
 				$inc: { slots: -1 },
 			};
@@ -233,13 +233,21 @@ async function run() {
 			res.send(result);
 		});
 
+		app.get("/user-appointments/:email", async (req, res) => {
+			const email = req.params.email;
+			const query = { "user.email": email };
+			const result = await appointmentsCollection.find(query).toArray();
+			res.send(result);
+		});
+
 		app.patch("/report-submit/:email/:id", async (req, res) => {
 			const id = req.params.id;
 			const email = req.params.email;
-			const reportData= req.body;
+			const reportData = req.body;
 			const updateDoc = {
 				$set: {
 					result: reportData.result,
+					resultDeliveryDate: reportData.resultDeliveryDate,
 					status: "delivered",
 				},
 			};
@@ -321,7 +329,7 @@ async function run() {
 				const result = [data.name, data.count];
 				return result;
 			});
-			mostlyBookedChartData.unshift(["Test Name", "Total Booked"])
+			mostlyBookedChartData.unshift(["Test Name", "Total Booked"]);
 			// Delivery Status Chart Data
 			const deliveryStatusPipeline = [
 				{
