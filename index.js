@@ -151,8 +151,18 @@ async function run() {
 			res.send(result);
 		});
 
+		// admin dashboard test
 		app.get("/tests", async (req, res) => {
+			const currentDate = new Date();
 			const result = await testsCollection.find().toArray();
+			res.send(result);
+		});
+		// common user test
+		app.get("/available-tests", async (req, res) => {
+			const currentDate = new Date().toISOString();
+			const result = await testsCollection
+				.find({ date: { $gte: currentDate } })
+				.toArray();
 			res.send(result);
 		});
 
@@ -240,6 +250,46 @@ async function run() {
 			res.send(result);
 		});
 
+		app.get("/featured-tests/", async (req, res) => {
+			const pipeline = [
+				{
+					$group: {
+						_id: "$testData._id",
+						name: { $first: "$testData.name" },
+						image: { $first: "$testData.image" },
+						description: { $first: "$testData.description" },
+						price: { $first: "$testData.price" },
+						date: { $first: "$testData.date" },
+						slots: { $first: "$testData.slots" },
+						count: { $sum: 1 },
+					},
+				},
+				{
+					$sort: { count: -1 },
+				},
+				{
+					$limit: 5, // Limit to top 5 most booked tests
+				},
+				{
+					$project: {
+						_id: 1,
+						// testId: "$_id",
+						name: 1,
+						image: 1,
+						description: 1,
+						price: 1,
+						date: 1,
+						slots: 1,
+						count: 1,
+					},
+				},
+			];
+			const featuredTest = await appointmentsCollection
+				.aggregate(pipeline)
+				.toArray();
+			res.send(featuredTest);
+		});
+
 		app.patch("/report-submit/:email/:id", async (req, res) => {
 			const id = req.params.id;
 			const email = req.params.email;
@@ -295,6 +345,12 @@ async function run() {
 				},
 			};
 			const result = await bannersCollection.updateOne(query, updateDoc);
+			res.send(result);
+		});
+
+		app.get("/active-banner", async (req, res) => {
+			const query = { isActive: true };
+			const result = await bannersCollection.findOne(query);
 			res.send(result);
 		});
 
@@ -358,6 +414,12 @@ async function run() {
 				mostlyBookedChartData: mostlyBookedChartData,
 				deliverySatusChartData: deliveryData,
 			});
+		});
+
+		// recommendation collection
+		app.get("/recommendations", async (req, res) => {
+			const result = await recommendationsCollection.find().toArray();
+			res.send(result);
 		});
 
 		// Send a ping to confirm a successful connection
