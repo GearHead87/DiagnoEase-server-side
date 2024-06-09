@@ -9,7 +9,11 @@ const port = process.env.PORT || 5000;
 const app = express();
 
 const corsOptions = {
-	origin: ["http://localhost:5173", "http://localhost:5174"],
+	origin: [
+		"http://localhost:5173",
+		"http://localhost:5174",
+		"https://diagnoease-1e7b9.web.app",
+	],
 	credentials: true,
 	optionSuccessStatus: 200,
 };
@@ -19,8 +23,14 @@ app.use(cookieParser());
 
 // verify jwt middleware
 const verifyToken = (req, res, next) => {
-	const token = req.cookies?.token;
+	// const token = req.cookies?.token;
+	if (!req.headers.authorization) {
+		return res.status(401).send({ message: "unauthorized access" });
+	}
+	const token = req.headers.authorization.split(" ")[1];
+
 	if (!token) return res.status(401).send({ message: "unauthorized access" });
+
 	if (token) {
 		jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
 			if (err) {
@@ -69,9 +79,12 @@ async function run() {
 		app.post("/jwt", async (req, res) => {
 			const user = req.body;
 			// console.log("user for token", user);
-			const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET);
+			const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
+				expiresIn: "365d",
+			});
 
-			res.cookie("token", token, cookieOptions).send({ success: true });
+			// res.cookie("token", token, cookieOptions).send({ success: true });
+			res.send({ token });
 		});
 
 		//clearing JWT Token
@@ -82,6 +95,16 @@ async function run() {
 				.clearCookie("token", { ...cookieOptions, maxAge: 0 })
 				.send({ success: true });
 		});
+
+		const verifyAdmin = async (req, res, next) => {
+			const email = req.user.email;
+			const query = { email: email };
+			const result = await usersCollection.findOne(query);
+			if (!result || result?.role !== "admin") {
+				return res.status(403).send({ message: "forbidden access" });
+			}
+			next();
+		};
 
 		// API Services
 
@@ -95,22 +118,26 @@ async function run() {
 		});
 
 		// create-payment-intent
-		app.post("/create-payment-intent", async (req, res) => {
-			const price = req.body.price;
-			const priceInCent = parseFloat(price) * 100;
-			if (!price || priceInCent < 1) return;
-			// generate clientSecret
-			const { client_secret } = await stripe.paymentIntents.create({
-				amount: priceInCent,
-				currency: "usd",
-				// In the latest version of the API, specifying the `automatic_payment_methods` parameter is optional because Stripe enables its functionality by default.
-				automatic_payment_methods: {
-					enabled: true,
-				},
-			});
-			// send client secret as response
-			res.send({ clientSecret: client_secret });
-		});
+		app.post(
+			"/create-payment-intent",
+			verifyToken,
+			async (req, res) => {
+				const price = req.body.price;
+				const priceInCent = parseFloat(price) * 100;
+				if (!price || priceInCent < 1) return;
+				// generate clientSecret
+				const { client_secret } = await stripe.paymentIntents.create({
+					amount: priceInCent,
+					currency: "usd",
+					// In the latest version of the API, specifying the `automatic_payment_methods` parameter is optional because Stripe enables its functionality by default.
+					automatic_payment_methods: {
+						enabled: true,
+					},
+				});
+				// send client secret as response
+				res.send({ clientSecret: client_secret });
+			}
+		);
 
 		// User Collection
 		app.post("/user", async (req, res) => {
@@ -119,19 +146,19 @@ async function run() {
 			res.send(result);
 		});
 
-		app.get("/users", async (req, res) => {
+		app.get("/users", verifyToken, verifyAdmin, async (req, res) => {
 			const result = await usersCollection.find().toArray();
 			res.send(result);
 		});
 
-		app.get("/user/:email", async (req, res) => {
+		app.get("/user/:email", verifyToken, async (req, res) => {
 			const userEmail = req.params.email;
 			const query = { email: userEmail };
 			const result = await usersCollection.findOne(query);
 			res.send(result);
 		});
 
-		app.patch("/user/:id", async (req, res) => {
+		app.patch("/user/:id", verifyToken, async (req, res) => {
 			const userData = req.body;
 			const id = req.params.id;
 			const updateDoc = {
@@ -145,35 +172,68 @@ async function run() {
 		});
 
 		// Test Collection
-		app.post("/test", async (req, res) => {
+		app.post("/test", verifyToken, verifyAdmin, async (req, res) => {
 			const testData = req.body;
 			const result = await testsCollection.insertOne(testData);
 			res.send(result);
 		});
 
 		// admin dashboard test
-		app.get("/tests", async (req, res) => {
+		app.get("/tests", verifyToken, verifyAdmin, async (req, res) => {
 			const currentDate = new Date();
 			const result = await testsCollection.find().toArray();
 			res.send(result);
 		});
 		// common user test
 		app.get("/available-tests", async (req, res) => {
+			const { filterDate, page, size } = req.query;
+			const itemsPerPage = parseInt(size);
+			const skipItems = (parseInt(page) - 1) * itemsPerPage;
 			const currentDate = new Date().toISOString();
-			const result = await testsCollection
-				.find({ date: { $gte: currentDate } })
-				.toArray();
-			res.send(result);
+			let query = { date: { $gte: currentDate } };
+
+			if (filterDate) {
+				const startOfDay = new Date(filterDate);
+				startOfDay.setUTCHours(0, 0, 0, 0);
+
+				const endOfDay = new Date(filterDate);
+				endOfDay.setUTCHours(23, 59, 59, 999);
+
+				query = {
+					date: {
+						$gte: startOfDay.toISOString(),
+						$lte: endOfDay.toISOString(),
+					},
+				};
+				// Logging for debugging
+				console.log("Start of Day:", startOfDay.toISOString());
+				console.log("End of Day:", endOfDay.toISOString());
+				console.log("Query:", JSON.stringify(query));
+			}
+			try {
+				const result = await testsCollection
+					.find(query)
+					.skip(skipItems)
+					.limit(itemsPerPage)
+					.toArray();
+
+				const totalTests = await testsCollection.countDocuments(query);
+				const totalPages = Math.ceil(totalTests / itemsPerPage);
+
+				res.send({ data: result, totalTests });
+			} catch (error) {
+				res.status(500).send({ message: "An error occurred", error });
+			}
 		});
 
-		app.get("/test/:id", async (req, res) => {
+		app.get("/test/:id", verifyToken, async (req, res) => {
 			const id = req.params.id;
 			const query = { _id: new ObjectId(id) };
 			const result = await testsCollection.findOne(query);
 			res.send(result);
 		});
 
-		app.patch("/test/:id", async (req, res) => {
+		app.patch("/test/:id", verifyToken, verifyAdmin, async (req, res) => {
 			const id = req.params.id;
 			const testData = req.body;
 			const updateDoc = {
@@ -186,7 +246,7 @@ async function run() {
 			res.send(result);
 		});
 
-		app.delete("/test/:id", async (req, res) => {
+		app.delete("/test/:id", verifyToken, verifyAdmin, async (req, res) => {
 			const id = req.params.id;
 			const query = { _id: new ObjectId(id) };
 			const result = await testsCollection.deleteOne(query);
@@ -194,7 +254,7 @@ async function run() {
 		});
 
 		// Appointments Collection
-		app.post("/booking", async (req, res) => {
+		app.post("/booking", verifyToken, verifyAdmin, async (req, res) => {
 			// Upload new Booking Data
 			const newData = req.body;
 			const result = await appointmentsCollection.insertOne(newData);
@@ -214,41 +274,56 @@ async function run() {
 			}
 		});
 
-		app.delete("/booking/:id", async (req, res) => {
+		app.delete("/booking/:id", verifyToken, verifyAdmin, async (req, res) => {
 			const id = req.params.id;
 			const query = { _id: new ObjectId(id) };
 			const result = await appointmentsCollection.deleteOne(query);
-			console.log(id, result);
+			// console.log(id, result);
 			res.send(result);
 		});
 
-		app.get("/appointments/:testId", async (req, res) => {
-			const testId = req.params.testId;
-			const query = { "testData._id": testId };
-			const result = await appointmentsCollection.find(query).toArray();
-			res.send(result);
-		});
+		app.get(
+			"/appointments/:testId",
+			verifyToken,
+			verifyAdmin,
+			async (req, res) => {
+				const testId = req.params.testId;
+				const { email } = req.query;
+				let query = { "testData._id": testId };
+				if (email) {
+					query["user.email"] = email;
+				}
+				// console.log(query);
+				const result = await appointmentsCollection.find(query).toArray();
+				res.send(result);
+			}
+		);
 
-		app.get("/upcomming-appointments/:email", async (req, res) => {
+		app.get("/upcomming-appointments/:email", verifyToken, async (req, res) => {
 			const email = req.params.email;
 			const query = { "user.email": email, status: "pending" };
 			const result = await appointmentsCollection.find(query).toArray();
 			res.send(result);
 		});
 
-		app.get("/test-results/:email", async (req, res) => {
+		app.get("/test-results/:email", verifyToken, async (req, res) => {
 			const email = req.params.email;
 			const query = { "user.email": email, status: "delivered" };
 			const result = await appointmentsCollection.find(query).toArray();
 			res.send(result);
 		});
 
-		app.get("/user-appointments/:email", async (req, res) => {
-			const email = req.params.email;
-			const query = { "user.email": email };
-			const result = await appointmentsCollection.find(query).toArray();
-			res.send(result);
-		});
+		app.get(
+			"/user-appointments/:email",
+			verifyToken,
+			verifyAdmin,
+			async (req, res) => {
+				const email = req.params.email;
+				const query = { "user.email": email };
+				const result = await appointmentsCollection.find(query).toArray();
+				res.send(result);
+			}
+		);
 
 		app.get("/featured-tests/", async (req, res) => {
 			const pipeline = [
@@ -290,24 +365,29 @@ async function run() {
 			res.send(featuredTest);
 		});
 
-		app.patch("/report-submit/:email/:id", async (req, res) => {
-			const id = req.params.id;
-			const email = req.params.email;
-			const reportData = req.body;
-			const updateDoc = {
-				$set: {
-					result: reportData.result,
-					resultDeliveryDate: reportData.resultDeliveryDate,
-					status: "delivered",
-				},
-			};
-			const query = { _id: new ObjectId(id), "user.email": email };
-			const result = await appointmentsCollection.updateOne(query, updateDoc);
-			res.send(result);
-		});
+		app.patch(
+			"/report-submit/:email/:id",
+			verifyToken,
+			verifyAdmin,
+			async (req, res) => {
+				const id = req.params.id;
+				const email = req.params.email;
+				const reportData = req.body;
+				const updateDoc = {
+					$set: {
+						result: reportData.result,
+						resultDeliveryDate: reportData.resultDeliveryDate,
+						status: "delivered",
+					},
+				};
+				const query = { _id: new ObjectId(id), "user.email": email };
+				const result = await appointmentsCollection.updateOne(query, updateDoc);
+				res.send(result);
+			}
+		);
 
 		// Banner collection
-		app.post("/banner", async (req, res) => {
+		app.post("/banner", verifyToken, verifyAdmin, async (req, res) => {
 			const bannerData = req.body;
 			const result = await bannersCollection.insertOne(bannerData);
 			res.send(result);
@@ -318,35 +398,40 @@ async function run() {
 			res.send(result);
 		});
 
-		app.delete("/banner/:id", async (req, res) => {
+		app.delete("/banner/:id", verifyToken, verifyAdmin, async (req, res) => {
 			const id = req.params.id;
 			const query = { _id: new ObjectId(id) };
 			const result = await bannersCollection.deleteOne(query);
 			res.send(result);
 		});
 
-		app.put("/banner/:id/activate", async (req, res) => {
-			const id = req.params.id;
-			// update all banner as inactive
-			const updateAllBanner = await bannersCollection.updateMany(
-				{},
-				{
+		app.put(
+			"/banner/:id/activate",
+			verifyToken,
+			verifyAdmin,
+			async (req, res) => {
+				const id = req.params.id;
+				// update all banner as inactive
+				const updateAllBanner = await bannersCollection.updateMany(
+					{},
+					{
+						$set: {
+							isActive: false,
+						},
+					}
+				);
+				// console.log(updateAllBanner);
+				// update seleted banner as active
+				const query = { _id: new ObjectId(id) };
+				const updateDoc = {
 					$set: {
-						isActive: false,
+						isActive: true,
 					},
-				}
-			);
-			// console.log(updateAllBanner);
-			// update seleted banner as active
-			const query = { _id: new ObjectId(id) };
-			const updateDoc = {
-				$set: {
-					isActive: true,
-				},
-			};
-			const result = await bannersCollection.updateOne(query, updateDoc);
-			res.send(result);
-		});
+				};
+				const result = await bannersCollection.updateOne(query, updateDoc);
+				res.send(result);
+			}
+		);
 
 		app.get("/active-banner", async (req, res) => {
 			const query = { isActive: true };
@@ -355,7 +440,7 @@ async function run() {
 		});
 
 		// Admin stat Data
-		app.get("/admin-stat", async (req, res) => {
+		app.get("/admin-stat", verifyToken, verifyAdmin, async (req, res) => {
 			const bookedTestPipeline = [
 				{
 					$group: {
