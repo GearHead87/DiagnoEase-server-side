@@ -254,7 +254,7 @@ async function run() {
 		});
 
 		// Appointments Collection
-		app.post("/booking", verifyToken, verifyAdmin, async (req, res) => {
+		app.post("/booking", verifyToken, async (req, res) => {
 			// Upload new Booking Data
 			const newData = req.body;
 			const result = await appointmentsCollection.insertOne(newData);
@@ -274,7 +274,7 @@ async function run() {
 			}
 		});
 
-		app.delete("/booking/:id", verifyToken, verifyAdmin, async (req, res) => {
+		app.delete("/booking/:id", verifyToken, async (req, res) => {
 			const id = req.params.id;
 			const query = { _id: new ObjectId(id) };
 			const result = await appointmentsCollection.deleteOne(query);
