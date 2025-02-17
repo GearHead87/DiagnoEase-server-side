@@ -9,12 +9,7 @@ const port = process.env.PORT || 5000;
 const app = express();
 
 const corsOptions = {
-	origin: [
-		"http://localhost:5173",
-		"http://localhost:5174",
-		"https://diagnoease-1e7b9.web.app",
-		"*"
-	],
+	origin: true,  // This allows all origins
 	credentials: true,
 	optionSuccessStatus: 200,
 };
