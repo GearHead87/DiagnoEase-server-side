@@ -9,7 +9,9 @@ const port = process.env.PORT || 5000;
 const app = express();
 
 const corsOptions = {
-	origin: true,  // This allows all origins
+	origin: '*',  // Allow all origins
+	methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+	allowedHeaders: ['Content-Type', 'Authorization'],
 	credentials: true,
 	optionSuccessStatus: 200,
 };
