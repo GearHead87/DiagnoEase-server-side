@@ -9,7 +9,7 @@ const port = process.env.PORT || 5000;
 const app = express();
 
 const corsOptions = {
-	origin: ['https://diagnoease-1e7b9.web.app', 'https://diagno-ease-client-side.vercel.app', "http://localhost:5173"],
+	origin: ['https://diagnoease-1e7b9.web.app', 'https://diagno-ease-client-side.vercel.app', "http://localhost:5173", "https://www.cozycabin.space"],
 	methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
 	allowedHeaders: ['Content-Type', 'Authorization'],
 	credentials: true,
